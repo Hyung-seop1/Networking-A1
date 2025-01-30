@@ -216,18 +216,45 @@ int main(int argc, char* argv[])
 		}
 
 		/* Receiving the file metadata
-		* 
-		* Process with incoming metadata packets 
+		*
+		* Process with incoming metadata packets
 		* declaring the new variable in char maybe called metaPacket[]
 		* use connection.ReceivePacket(metaPacket , sizeof(metaPacket)) and declare to byte read variable
 		* Parse metadata from received packets and initialize file receiving process and store the information
-		* 
+		*
+		* // Step 1: Receiving file metadata
+			unsigned char metaPacket[256]; // Buffer to store incoming metadata
+			int bytes_read = connection.ReceivePacket(metaPacket, sizeof(metaPacket)); // Read metadata packet
+
+			if (bytes_read > 0) {
+				metaPacket[bytes_read] = '\0'; // Ensure null termination for string parsing
+
+				// Parse metadata (assuming format: "filename|filesize")
+				string metadata((char*)metaPacket, bytes_read);
+				size_t separator = metadata.find('|');
+
+				if (separator != string::npos) {
+					string filename = metadata.substr(0, separator);
+					int fileSize = stoi(metadata.substr(separator + 1));
+
+					// Initialize file receiving process
+					ofstream file(filename, ios::binary); // Open file for writing
+					if (file.is_open()) {
+						printf("Receiving file: %s, Size: %d bytes\n", filename.c_str(), fileSize);
+					} else {
+						printf("Error: Could not open file for writing\n");
+					}
+				} else {
+					printf("Error: Invalid metadata format\n");
+				}
+			}
 		*/
 
 		// send and receive packets
 		sendAccumulator += DeltaTime;
 		int sendCount = 0;
 
+		//client
 		while (sendAccumulator > 1.0f / sendRate)
 		{
 			unsigned char packet[PacketSize];
@@ -236,18 +263,20 @@ int main(int argc, char* argv[])
 			snprintf((char*)packet, sizeof(packet), "Hello World <<%d>>", sendCount);
 			sendCount++;
 
-			connection.SendPacket(packet, strlen((char*)packet +1));
+			connection.SendPacket(packet, strlen((char*)packet + 1));
 			sendAccumulator -= 1.0f / sendRate;
 
-			 /* Receiving the file pieces
-			 *
-			 * This would involve receiving and assembling file pieces based on metadata
-			 * Receiving the actual file data in pieces, typically after the metadata is exchanged. These chunks will be written to disk in sequence.
-			 * After handling the metadata, include another loop to process the file pieces sent by the other side.
-			 * 
-			 */
+
+			/* Receiving the file pieces
+			*
+			* This would involve receiving and assembling file pieces based on metadata
+			* Receiving the actual file data in pieces, typically after the metadata is exchanged. These chunks will be written to disk in sequence.
+			* After handling the metadata, include another loop to process the file pieces sent by the other side.
+			*
+			*/
 		}
 
+		//server
 		while (true)
 		{
 			unsigned char packet[256];
