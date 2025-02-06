@@ -117,6 +117,24 @@ private:
 
 int main(int argc, char* argv[])
 {
+	
+	/*File type determined if ASCII or image file for efficient fragementation and reconstruction
+		- Determine file meta data(name, size, type)
+		- A fixed - sized header can be for metadata
+		- Reciever should ack receipt of metadata before proceeding with data reception(reordering, checksum, etc.)
+
+		- Large files fragmented into buffers or chunks
+
+		- Sender buffers unacknowledged packets with their metadata
+
+		- Instead of waiting for ACK to be sent for each packet before sending next one, Implement "SLIDING WINDOW"
+		- Multiple packets sent before waiting for ACK
+		- Reciever buffers out - of - order packets for reordering, if mismatch, request retransmission of corrupted packet
+		- Reciever computes checksum on recieved file,
+
+		-Checksum(CRC32) on entire file one last packets of last buffer sent.
+		- Send as part of metadata packet.*/
+	
 	// parse command line
 
 	enum Mode
