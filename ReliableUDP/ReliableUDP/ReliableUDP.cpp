@@ -125,7 +125,7 @@ int main(int argc, char* argv[])
 		Server
 	};
 
-	Mode mode = Client;
+	Mode mode = Server;
 	Address address;
 
 	if (argc >= 2)
@@ -140,7 +140,6 @@ int main(int argc, char* argv[])
 	}
 
 	// initialize
-
 	if (!InitializeSockets())
 	{
 		printf("failed to initialize sockets\n");
@@ -148,7 +147,6 @@ int main(int argc, char* argv[])
 	}
 
 	ReliableConnection connection(ProtocolId, TimeOut);
-
 	const int port = mode == Server ? ServerPort : ClientPort;
 
 	if (!connection.Start(port))
@@ -160,6 +158,7 @@ int main(int argc, char* argv[])
 	if (mode == Client)
 		connection.Connect(address);
 	else
+		// If mode is "server" listen
 		connection.Listen();
 
 	bool connected = false;
@@ -196,42 +195,7 @@ int main(int argc, char* argv[])
 			printf("connection failed\n");
 			break;
 		}
-
-		/* Receiving the file metadata
-		*
-		* Process with incoming metadata packets
-		* declaring the new variable in char maybe called metaPacket[]
-		* use connection.ReceivePacket(metaPacket , sizeof(metaPacket)) and declare to byte read variable
-		* Parse metadata from received packets and initialize file receiving process and store the information
-		*
-		* // Step 1: Receiving file metadata
-			unsigned char metaPacket[256]; // Buffer to store incoming metadata
-			int bytes_read = connection.ReceivePacket(metaPacket, sizeof(metaPacket)); // Read metadata packet
-
-			if (bytes_read > 0) {
-				metaPacket[bytes_read] = '\0'; // Ensure null termination for string parsing
-
-				// Parse metadata (assuming format: "filename|filesize")
-				string metadata((char*)metaPacket, bytes_read);
-				size_t separator = metadata.find('|');
-
-				if (separator != string::npos) {
-					string filename = metadata.substr(0, separator);
-					int fileSize = stoi(metadata.substr(separator + 1));
-
-					// Initialize file receiving process
-					ofstream file(filename, ios::binary); // Open file for writing
-					if (file.is_open()) {
-						printf("Receiving file: %s, Size: %d bytes\n", filename.c_str(), fileSize);
-					} else {
-						printf("Error: Could not open file for writing\n");
-					}
-				} else {
-					printf("Error: Invalid metadata format\n");
-				}
-			}
-		*/
-
+	
 		// send and receive packets
 		sendAccumulator += DeltaTime;
 		int sendCount = 0;
@@ -248,25 +212,22 @@ int main(int argc, char* argv[])
 			connection.SendPacket(packet, strlen((char*)packet + 1));
 			sendAccumulator -= 1.0f / sendRate;
 
-
-			/* Receiving the file pieces
-			*
-			* This would involve receiving and assembling file pieces based on metadata
-			* Receiving the actual file data in pieces, typically after the metadata is exchanged. These chunks will be written to disk in sequence.
-			* After handling the metadata, include another loop to process the file pieces sent by the other side.
-			*
-			*/
 		}
 
 		//server
 		while (true)
 		{
-			unsigned char packet[256];
+			unsigned char packet[PacketSize];
 			int bytes_read = connection.ReceivePacket(packet, sizeof(packet));
 			if (bytes_read == 0)
 				break;
 
-			printf("Hello World : %s\n", packet);
+			// Validate the received packet
+			printf("Received packet: %s\n", packet);
+
+			// Send acknowledgment back to the client
+			string response = "ACK";
+			connection.SendPacket((unsigned char*)response.c_str(), response.size() + 1);
 		}
 
 		// show packets that were acked this frame
@@ -313,8 +274,6 @@ int main(int argc, char* argv[])
 
 		net::wait(DeltaTime);
 	}
-
-	ShutdownSockets();
 
 	return 0;
 }
