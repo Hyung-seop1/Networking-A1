@@ -210,14 +210,53 @@ int main(int argc, char* argv[])
 		sendAccumulator += DeltaTime;
 		int sendCount = 0;
 
-		// CLIENT
-		while (sendAccumulator > 1.0f / sendRate)
-		{
-			unsigned char packet[PacketSize];
-			memset(packet, 0, sizeof(packet));
-			connection.SendPacket(packet, sizeof(packet));
-			sendAccumulator -= 1.0f / sendRate;
+		if (mode == Client) {
+			// Open file for reading
+			ifstream file(fileName, ios::binary | ios::ate);
+			if (!file) {
+				cerr << "Error: Cannot open file.\n";
+				return 1;
+			}
+
+			size_t fileSize = file.tellg();
+			file.seekg(0, ios::beg);
+			size_t totalPackets = (fileSize / PacketSize) + ((fileSize % PacketSize) ? 1 : 0);
+
+			// Send first packet (File Metadata)
+			unsigned char metadataPacket[PacketSize];
+			memset(metadataPacket, 0, PacketSize);
+			snprintf((char*)metadataPacket, PacketSize, "File|%zu|%s", totalPackets, fileName);
+			connection.SendPacket(metadataPacket, PacketSize);
+
+			cout << "Sending file: " << fileName << " (" << fileSize << " bytes) in " << totalPackets << " packets.\n";
+
+			char buffer[PacketSize];
+			size_t packetIndex = 0;
+
+			while (true) {
+				sendAccumulator += DeltaTime;
+
+				while (sendAccumulator > 1.0f / sendRate && packetIndex < totalPackets) {
+					memset(buffer, 0, PacketSize);
+					file.read(buffer, PacketSize);
+					connection.SendPacket((unsigned char*)buffer, PacketSize);
+
+					packetIndex++;
+					sendAccumulator -= 1.0f / sendRate;
+				}
+
+				if (packetIndex >= totalPackets) {
+					cout << "File transmission complete. Waiting for server acknowledgment...\n";
+					break;
+				}
+
+				connection.Update(DeltaTime);
+				net::wait(DeltaTime);
+			}
+
+			file.close();
 		}
+
 
 		// SERVER
 		while (true)
