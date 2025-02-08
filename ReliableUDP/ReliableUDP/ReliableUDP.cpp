@@ -222,10 +222,17 @@ int main(int argc, char* argv[])
 		// SERVER
 		while (true)
 		{
-			unsigned char packet[256];
+			unsigned char packet[PacketSize];
 			int bytes_read = connection.ReceivePacket(packet, sizeof(packet));
 			if (bytes_read == 0)
 				break;
+
+			// Validate the received packet
+			printf("Received packet: %s\n", packet);
+
+			// Send acknowledgment back to the client
+			string response = "ACK";
+			connection.SendPacket((unsigned char*)response.c_str(), response.size() + 1);
 		}
 
 		// show packets that were acked this frame
