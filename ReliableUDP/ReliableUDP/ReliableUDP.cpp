@@ -8,7 +8,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
-
+#include <chrono>  // Include this header for accurate time measurement
 #include "Net.h"
 #pragma warning(disable: 4996)
 
@@ -120,7 +120,6 @@ unsigned long ComputeCRC(const unsigned char* data, size_t length);
 int main(int argc, char* argv[])
 {
 	// parse command line
-
 	enum Mode
 	{
 		Client,
@@ -178,6 +177,10 @@ int main(int argc, char* argv[])
 
 	FlowControl flowControl;
 
+	// Add a variable to track the start time of the transfer
+	std::chrono::high_resolution_clock::time_point transferStartTime;
+	size_t totalFileSize = 0;  // To store the total file size
+
 	while (true)
 	{
 		// update flow control
@@ -187,7 +190,6 @@ int main(int argc, char* argv[])
 		const float sendRate = flowControl.GetSendRate();
 
 		// detect changes in connection state
-
 		if (mode == Server && connected && !connection.IsConnected())
 		{
 			flowControl.Reset();
@@ -223,6 +225,9 @@ int main(int argc, char* argv[])
 			file.seekg(0, ios::beg);
 			size_t totalPackets = (fileSize / PacketSize) + ((fileSize % PacketSize) ? 1 : 0);
 
+			// Record the start time when the file starts transmitting
+			transferStartTime = std::chrono::high_resolution_clock::now();
+
 			// Send first packet (File Metadata)
 			unsigned char metadataPacket[PacketSize];
 			memset(metadataPacket, 0, PacketSize);
@@ -254,6 +259,8 @@ int main(int argc, char* argv[])
 				connection.Update(DeltaTime);
 				net::wait(DeltaTime);
 			}
+			file.close();
+
 			// Compute the CRC32 of the file
 			unsigned char fileBuffer[PacketSize];
 			unsigned long crc = 0xFFFFFFFF;
@@ -261,7 +268,6 @@ int main(int argc, char* argv[])
 			while (file.read(reinterpret_cast<char*>(fileBuffer), PacketSize)) {
 				crc = ComputeCRC(fileBuffer, file.gcount());
 			}
-			file.close();
 
 			// Send the CRC32 checksum to the server
 			char crcPacket[PacketSize];
@@ -269,6 +275,18 @@ int main(int argc, char* argv[])
 			connection.SendPacket((unsigned char*)crcPacket, PacketSize);
 
 			cout << "File transmission complete. CRC32 sent: " << std::hex << crc << endl;
+
+			// After the transfer is complete, calculate the time taken and the transfer speed
+			auto transferEndTime = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<float> transferDuration = transferEndTime - transferStartTime;
+
+			// Calculate the transfer speed in Mbps
+			float transferTimeInSeconds = transferDuration.count(); // Time in seconds
+			float transferSpeedMbps = (totalFileSize * 8.0f) / (transferTimeInSeconds * 1000000.0f); // Convert bytes to bits and calculate speed
+
+			// Display the transfer speed
+			cout << "Transfer completed in " << transferTimeInSeconds << " seconds.\n";
+			cout << "Transfer speed: " << transferSpeedMbps << " Mbps\n";
 		}
 
 
@@ -362,13 +380,17 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-unsigned long ComputeCRC(const unsigned char* data, size_t length) {
+unsigned long ComputeCRC(const unsigned char* data, size_t length)
+{
 	unsigned long crc = 0xFFFFFFFF;
 	for (size_t i = 0; i < length; i++) {
 		crc ^= data[i];
 		for (int j = 0; j < 8; j++) {
-			crc = (crc >> 1) ^ (0xEDB88320 & (crc & 1 ? 0xFFFFFFFF : 0));
+			if (crc & 1)
+				crc = (crc >> 1) ^ 0xEDB88320;
+			else
+				crc >>= 1;
 		}
 	}
-	return ~crc;
+	return crc ^ 0xFFFFFFFF;
 }
