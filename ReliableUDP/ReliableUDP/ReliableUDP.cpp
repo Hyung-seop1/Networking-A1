@@ -115,6 +115,7 @@ private:
 	float penalty_reduction_accumulator;
 };
 
+unsigned long ComputeCRC(const unsigned char* data, size_t length);
 
 int main(int argc, char* argv[])
 {
@@ -253,8 +254,21 @@ int main(int argc, char* argv[])
 				connection.Update(DeltaTime);
 				net::wait(DeltaTime);
 			}
-
+			// Compute the CRC32 of the file
+			unsigned char fileBuffer[PacketSize];
+			unsigned long crc = 0xFFFFFFFF;
+			file.seekg(0, ios::beg);
+			while (file.read(reinterpret_cast<char*>(fileBuffer), PacketSize)) {
+				crc = ComputeCRC(fileBuffer, file.gcount());
+			}
 			file.close();
+
+			// Send the CRC32 checksum to the server
+			char crcPacket[PacketSize];
+			snprintf(crcPacket, PacketSize, "CRC32|%08lX", crc);
+			connection.SendPacket((unsigned char*)crcPacket, PacketSize);
+
+			cout << "File transmission complete. CRC32 sent: " << std::hex << crc << endl;
 		}
 
 
@@ -269,11 +283,34 @@ int main(int argc, char* argv[])
 			// Validate the received packet
 			printf("Received packet: %s\n", packet);
 
+			static string clientCrc;
+			unsigned long serverCrc = 0xFFFFFFFF;
+
 			if (strncmp((char*)packet, "File|", 5) == 0)
 			{
 				printf("Received file metadata. Sending ACK.\n");
 				string ack = "ACK_FILE_INFO"; // Send ACK to client that file successfully 
 				connection.SendPacket((unsigned char*)ack.c_str(), ack.size() + 1);
+			}
+			else if (strncmp((char*)packet, "CRC32|", 6) == 0)
+			{
+				clientCrc = string((char*)packet);
+				clientCrc = clientCrc.substr(6); // Extract the CRC32 value (remove "CRC32|" prefix)
+				printf("Received file CRC32: %s\n", clientCrc.c_str());
+
+				// Calculate server-side CRC32 (accumulating data)
+				serverCrc = ComputeCRC(packet, bytes_read);
+			}
+
+			// Final comparison between client and server CRC32
+			if (!clientCrc.empty()) {
+				printf("Server CRC32: %08lX\n", serverCrc);
+				if (clientCrc == std::to_string(serverCrc)) {
+					printf("File transfer successful! CRC32 matched.\n");
+				}
+				else {
+					printf("File transfer failed! CRC32 mismatch.\n");
+				}
 			}
 		}
 
@@ -323,4 +360,15 @@ int main(int argc, char* argv[])
 	}
 
 	return 0;
+}
+
+unsigned long ComputeCRC(const unsigned char* data, size_t length) {
+	unsigned long crc = 0xFFFFFFFF;
+	for (size_t i = 0; i < length; i++) {
+		crc ^= data[i];
+		for (int j = 0; j < 8; j++) {
+			crc = (crc >> 1) ^ (0xEDB88320 & (crc & 1 ? 0xFFFFFFFF : 0));
+		}
+	}
+	return ~crc;
 }
