@@ -118,24 +118,6 @@ private:
 
 int main(int argc, char* argv[])
 {
-	
-	/*File type determined if ASCII or image file for efficient fragementation and reconstruction
-		- Determine file meta data(name, size, type)
-		- A fixed - sized header can be for metadata
-		- Reciever should ack receipt of metadata before proceeding with data reception(reordering, checksum, etc.)
-
-		- Large files fragmented into buffers or chunks
-
-		- Sender buffers unacknowledged packets with their metadata
-
-		- Instead of waiting for ACK to be sent for each packet before sending next one, Implement "SLIDING WINDOW"
-		- Multiple packets sent before waiting for ACK
-		- Reciever buffers out - of - order packets for reordering, if mismatch, request retransmission of corrupted packet
-		- Reciever computes checksum on recieved file,
-
-		-Checksum(CRC32) on entire file one last packets of last buffer sent.
-		- Send as part of metadata packet.*/
-	
 	// parse command line
 
 	enum Mode
@@ -146,8 +128,9 @@ int main(int argc, char* argv[])
 
 	Mode mode = Server;
 	Address address;
+	const char* fileName = nullptr;
 
-	if (argc >= 2)
+	if (argc >= 3)
 	{
 		int a, b, c, d;
 #pragma warning(suppress : 4996)
@@ -155,7 +138,15 @@ int main(int argc, char* argv[])
 		{
 			mode = Client;
 			address = Address(a, b, c, d, ServerPort);
+			fileName = argv[2]; // Getting the file Name
 		}
+	}
+	else if (argc == 1) {
+		mode = Server;
+	}
+	else {
+		printf("Usage: <IP ADDRESS> <FILE NAME>\n");
+		return 1;
 	}
 
 	// initialize
@@ -219,90 +210,58 @@ int main(int argc, char* argv[])
 		sendAccumulator += DeltaTime;
 		int sendCount = 0;
 
-		// client
-		while (sendAccumulator > 1.0f / sendRate)
+		// ---------- CLIENT SEND FILENAME ----------
+		if (mode == Client)
 		{
-			unsigned char packet[PacketSize];
-			memset(packet, 0, sizeof(packet));
-
-			// Open file to determine metadata
-			FILE* file = fopen("testfile.bin", "rb"); 
+			// Open the file to send
+			ifstream file(fileName, ios::binary);
 			if (!file)
 			{
-				printf("Error opening file\n");
-				break;
+				printf("Failed to open file: %s\n", fileName);
+				return 1;
 			}
 
-			// Determine file size
-			fseek(file, 0, SEEK_END);
-			unsigned long fileSize = ftell(file);
-			rewind(file);
+			// Send the filename first
+			connection.SendPacket((const unsigned char*)fileName, strlen(fileName) + 1);
+			printf("Sent filename: %s\n", fileName);
 
-			// Determine file type (ASCII or Binary check)
-			int isBinary = 0;
-			unsigned char sample[256] = { 0 };
-			size_t readBytes = fread(sample, 1, sizeof(sample), file);
-			for (size_t i = 0; i < readBytes; i++)
+			// Send file data
+			char buffer[PacketSize];
+			while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0)
 			{
-				if (sample[i] == 0) // Presence of NULL byte indicates binary file
-				{
-					isBinary = 1;
-					break;
-				}
+				connection.SendPacket((const unsigned char*)buffer, file.gcount());
+				net::wait(DeltaTime); // To prevent flooding the network
 			}
-
-			fclose(file);
-
-			// Construct metadata packet (filename, size, type)
-			unsigned char metaPacket[PacketSize] = { 0 };
-			int metaIndex = 0;
-
-			// File name (limited to 50 bytes max, padded with null bytes)
-			const char* fileName = "testfile.bin";
-			for (int i = 0; i < 50 && fileName[i] != '\0'; i++)
-			{
-				metaPacket[metaIndex++] = fileName[i];
-			}
-			while (metaIndex < 50) // Ensure 50 bytes are always sent
-			{
-				metaPacket[metaIndex++] = '\0';
-			}
-
-			// Append file size (4-byte big-endian)
-			metaPacket[metaIndex++] = (fileSize >> 24) & 0xFF;
-			metaPacket[metaIndex++] = (fileSize >> 16) & 0xFF;
-			metaPacket[metaIndex++] = (fileSize >> 8) & 0xFF;
-			metaPacket[metaIndex++] = fileSize & 0xFF;
-
-			// Append file type ('B' for Binary, 'A' for ASCII)
-			metaPacket[metaIndex++] = isBinary ? 'B' : 'A';
-
-			// Send metadata packet
-			connection.SendPacket(metaPacket, metaIndex);
-
-			// Continue with the existing "Hello World" packet logic
-			snprintf((char*)packet, sizeof(packet), "Hello World <<%d>>", sendCount);
-			sendCount++;
-
-			connection.SendPacket(packet, strlen((char*)packet + 1));
-			sendAccumulator -= 1.0f / sendRate;
+			file.close();
+			printf("File transfer complete\n");
 		}
 
-
-		//server
-		while (true)
+		// ---------- SERVER RECEIVE FILENAME ----------
+		if (mode == Server)
 		{
 			unsigned char packet[PacketSize];
-			int bytes_read = connection.ReceivePacket(packet, sizeof(packet));
-			if (bytes_read == 0)
-				break;
+			int bytes_read = connection.ReceivePacket(packet, sizeof(packet) - 1);
+			if (bytes_read > 0)
+			{
+				packet[bytes_read] = '\0';
+				printf("Received filename: %s\n", packet);
 
-			// Validate the received packet
-			printf("Received packet: %s\n", packet);
+				// Open file to write
+				ofstream file((char*)packet, ios::binary);
+				if (!file)
+				{
+					printf("Failed to create file: %s\n", packet);
+					return 1;
+				}
 
-			// Send acknowledgment back to the client
-			string response = "ACK";
-			connection.SendPacket((unsigned char*)response.c_str(), response.size() + 1);
+				// Receive file data
+				while ((bytes_read = connection.ReceivePacket(packet, sizeof(packet))) > 0)
+				{
+					file.write((char*)packet, bytes_read);
+				}
+				file.close();
+				printf("File received successfully\n");
+			}
 		}
 
 		// show packets that were acked this frame
