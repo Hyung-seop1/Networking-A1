@@ -269,9 +269,12 @@ int main(int argc, char* argv[])
 			// Validate the received packet
 			printf("Received packet: %s\n", packet);
 
-			// Send acknowledgment back to the client
-			string response = "ACK";
-			connection.SendPacket((unsigned char*)response.c_str(), response.size() + 1);
+			if (strncmp((char*)packet, "File|", 5) == 0)
+			{
+				printf("Received file metadata. Sending ACK.\n");
+				string ack = "ACK_FILE_INFO"; // Send ACK to client that file successfully received
+				connection.SendPacket((unsigned char*)ack.c_str(), ack.size() + 1);
+			}
 		}
 
 		// show packets that were acked this frame
