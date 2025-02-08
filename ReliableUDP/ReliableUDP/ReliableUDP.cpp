@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Net.h"
+#pragma warning(disable: 4996)
 
 //#define SHOW_ACKS
 
@@ -218,19 +219,75 @@ int main(int argc, char* argv[])
 		sendAccumulator += DeltaTime;
 		int sendCount = 0;
 
-		//client
+		// client
 		while (sendAccumulator > 1.0f / sendRate)
 		{
 			unsigned char packet[PacketSize];
 			memset(packet, 0, sizeof(packet));
 
+			// Open file to determine metadata
+			FILE* file = fopen("testfile.bin", "rb"); 
+			if (!file)
+			{
+				printf("Error opening file\n");
+				break;
+			}
+
+			// Determine file size
+			fseek(file, 0, SEEK_END);
+			unsigned long fileSize = ftell(file);
+			rewind(file);
+
+			// Determine file type (ASCII or Binary check)
+			int isBinary = 0;
+			unsigned char sample[256] = { 0 };
+			size_t readBytes = fread(sample, 1, sizeof(sample), file);
+			for (size_t i = 0; i < readBytes; i++)
+			{
+				if (sample[i] == 0) // Presence of NULL byte indicates binary file
+				{
+					isBinary = 1;
+					break;
+				}
+			}
+
+			fclose(file);
+
+			// Construct metadata packet (filename, size, type)
+			unsigned char metaPacket[PacketSize] = { 0 };
+			int metaIndex = 0;
+
+			// File name (limited to 50 bytes max, padded with null bytes)
+			const char* fileName = "testfile.bin";
+			for (int i = 0; i < 50 && fileName[i] != '\0'; i++)
+			{
+				metaPacket[metaIndex++] = fileName[i];
+			}
+			while (metaIndex < 50) // Ensure 50 bytes are always sent
+			{
+				metaPacket[metaIndex++] = '\0';
+			}
+
+			// Append file size (4-byte big-endian)
+			metaPacket[metaIndex++] = (fileSize >> 24) & 0xFF;
+			metaPacket[metaIndex++] = (fileSize >> 16) & 0xFF;
+			metaPacket[metaIndex++] = (fileSize >> 8) & 0xFF;
+			metaPacket[metaIndex++] = fileSize & 0xFF;
+
+			// Append file type ('B' for Binary, 'A' for ASCII)
+			metaPacket[metaIndex++] = isBinary ? 'B' : 'A';
+
+			// Send metadata packet
+			connection.SendPacket(metaPacket, metaIndex);
+
+			// Continue with the existing "Hello World" packet logic
 			snprintf((char*)packet, sizeof(packet), "Hello World <<%d>>", sendCount);
 			sendCount++;
 
 			connection.SendPacket(packet, strlen((char*)packet + 1));
 			sendAccumulator -= 1.0f / sendRate;
-
 		}
+
 
 		//server
 		while (true)
