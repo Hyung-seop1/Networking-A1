@@ -1,4 +1,24 @@
-
+/*
+ * FILE          : ReliableUDP.cpp
+ * PROJECT       : SENG2040 - Network Application Development
+ * PROGRAMMERS   : Hyungseop Lee (8948291) | Navtej Saini (8958194)
+ * FIRST VERSION : 2025-02-08
+ * DESCRIPTION   :
+ *     This program implements a reliable UDP-based file transfer system. It enables
+ *     the transmission of binary files between a client and a server while ensuring
+ *     data integrity using CRC32 verification.
+ *
+ *     Features:
+ *     - Implements a reliable UDP connection for file transfer.
+ *     - Uses flow control to adapt to network conditions.
+ *     - Transfers file metadata and content in fixed-size packets.
+ *     - Computes and verifies CRC32 checksums to ensure data integrity.
+ *     - Provides acknowledgments for better reliability.
+ *
+ *     Functions:
+ *     - main()        : Handles client-server communication and file transfer logic.
+ *     - crc32()       : Computes the CRC32 checksum for data integrity verification.
+ */
 
 #include <iostream>
 #include <fstream>
@@ -13,6 +33,7 @@
 using namespace std;
 using namespace net;
 
+//const
 const int ServerPort = 30000;
 const int ClientPort = 30001;
 const int ProtocolId = 0x11223344;
@@ -111,6 +132,7 @@ private:
 	float penalty_reduction_accumulator;
 };
 
+//function prototype
 uint32_t crc32(const char* s, size_t n);
 
 int main(int argc, char* argv[])
@@ -383,6 +405,16 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
+/*
+ * FUNCTION   : crc32
+ * DESCRIPTION: Computes the CRC32 checksum of the given input data. The checksum is used
+ *              to verify data integrity during file transmission.
+ * PARAMETERS :
+ *   - s : Pointer to the input data buffer.
+ *   - n : Size of the input data in bytes.
+ * RETURNS    :
+ *   - The computed CRC32 checksum as a 32-bit unsigned integer.
+ */
 uint32_t crc32(const char* s, size_t n) {
 	uint32_t crc = 0xFFFFFFFF;
 
