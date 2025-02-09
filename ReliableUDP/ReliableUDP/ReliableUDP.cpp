@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 	if (argc >= 3)
 	{
 		int a, b, c, d;
-#pragma warning(suppress : 4996)
+		#pragma warning(suppress : 4996)
 		if (sscanf(argv[1], "%d.%d.%d.%d", &a, &b, &c, &d))
 		{
 			mode = Client;
@@ -184,10 +184,15 @@ int main(int argc, char* argv[])
 	}
 
 	if (mode == Client)
+	{
 		connection.Connect(address);
+	}
 	else
+	{
 		// If mode is "server" listen
 		connection.Listen();
+	}
+		
 
 	bool connected = false;
 	float sendAccumulator = 0.0f;
@@ -356,28 +361,25 @@ int main(int argc, char* argv[])
 			}
 		}
 
-
 		// show packets that were acked this frame
 
-#ifdef SHOW_ACKS
-		unsigned int* acks = NULL;
-		int ack_count = 0;
-		connection.GetReliabilitySystem().GetAcks(&acks, ack_count);
-		if (ack_count > 0)
-		{
-			printf("acks: %d", acks[0]);
-			for (int i = 1; i < ack_count; ++i)
-				printf(",%d", acks[i]);
-			printf("\n");
-		}
-#endif
+		#ifdef SHOW_ACKS
+				unsigned int* acks = NULL;
+				int ack_count = 0;
+				connection.GetReliabilitySystem().GetAcks(&acks, ack_count);
+				if (ack_count > 0)
+				{
+					printf("acks: %d", acks[0]);
+					for (int i = 1; i < ack_count; ++i)
+						printf(",%d", acks[i]);
+					printf("\n");
+				}
+		#endif
 
 		// update connection
-
 		connection.Update(DeltaTime);
 
 		// show connection stats
-
 		statsAccumulator += DeltaTime;
 
 		while (statsAccumulator >= 0.25f && connection.IsConnected())
@@ -427,6 +429,5 @@ uint32_t crc32(const char* s, size_t n) {
 			ch >>= 1;
 		}
 	}
-
 	return ~crc;
 }
