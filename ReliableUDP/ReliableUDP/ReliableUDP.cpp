@@ -1,8 +1,4 @@
-/*
-	Reliability and Flow Control Example
-	From "Networking for Game Programmers" - http://www.gaffer.org/networking-for-game-programmers
-	Author: Glenn Fiedler <gaffer@gaffer.org>
-*/
+
 
 #include <iostream>
 #include <fstream>
@@ -115,7 +111,7 @@ private:
 	float penalty_reduction_accumulator;
 };
 
-unsigned long ComputeCRC(const unsigned char* data, size_t length);
+uint32_t crc32(const char* s, size_t n);
 
 int main(int argc, char* argv[])
 {
@@ -211,7 +207,6 @@ int main(int argc, char* argv[])
 	
 		// send and receive packets
 		sendAccumulator += DeltaTime;
-		int sendCount = 0;
 
 		if (mode == Client) {
 			// Open file for reading
@@ -261,32 +256,32 @@ int main(int argc, char* argv[])
 			}
 			file.close();
 
-			// Compute the CRC32 of the file
-			unsigned char fileBuffer[PacketSize];
-			unsigned long crc = 0xFFFFFFFF;
-			file.seekg(0, ios::beg);
-			while (file.read(reinterpret_cast<char*>(fileBuffer), PacketSize)) {
-				crc = ComputeCRC(fileBuffer, file.gcount());
+			// Reopen file for CRC32 calculation (reset file pointer)
+			file.open(fileName, ios::binary);
+			if (!file) {
+				cerr << "Error: Cannot reopen file for CRC calculation.\n";
+				return 1;
 			}
 
-			// Send the CRC32 checksum to the server
+			// If file opened successfully, calculate the CRC32
+			unsigned long crc = 0xFFFFFFFF;
+			unsigned char fileBuffer[PacketSize];
+
+			while (file.read(reinterpret_cast<char*>(fileBuffer), PacketSize)) {
+				crc = crc32(reinterpret_cast<char*>(fileBuffer), file.gcount());
+			}
+
+			// If the file has remaining bytes (less than PacketSize)
+			if (file.gcount() > 0) {
+				crc = crc32(reinterpret_cast<char*>(fileBuffer), file.gcount());
+			}
+
+			// Send the CRC32 checksum to the server (final CRC value)
 			char crcPacket[PacketSize];
 			snprintf(crcPacket, PacketSize, "CRC32|%08lX", crc);
-			connection.SendPacket((unsigned char*)crcPacket, PacketSize);
+			connection.SendPacket((unsigned char*)crcPacket, strlen(crcPacket) + 1);
 
 			cout << "File transmission complete. CRC32 sent: " << std::hex << crc << endl;
-
-			// After the transfer is complete, calculate the time taken and the transfer speed
-			auto transferEndTime = std::chrono::high_resolution_clock::now();
-			std::chrono::duration<float> transferDuration = transferEndTime - transferStartTime;
-
-			// Calculate the transfer speed in Mbps
-			float transferTimeInSeconds = transferDuration.count(); // Time in seconds
-			float transferSpeedMbps = (totalFileSize * 8.0f) / (transferTimeInSeconds * 1000000.0f); // Convert bytes to bits and calculate speed
-
-			// Display the transfer speed
-			cout << "Transfer completed in " << transferTimeInSeconds << " seconds.\n";
-			cout << "Transfer speed: " << transferSpeedMbps << " Mbps\n";
 		}
 
 
@@ -302,7 +297,8 @@ int main(int argc, char* argv[])
 			printf("Received packet: %s\n", packet);
 
 			static string clientCrc;
-			unsigned long serverCrc = 0xFFFFFFFF;
+			unsigned long serverCrc = 0xFFFFFFFF;  // Initial CRC value for CRC32
+			static vector<unsigned char> fileData; // To store the received file data
 
 			if (strncmp((char*)packet, "File|", 5) == 0)
 			{
@@ -312,12 +308,18 @@ int main(int argc, char* argv[])
 			}
 			else if (strncmp((char*)packet, "CRC32|", 6) == 0)
 			{
+				// Extract the CRC32 from the packet
 				clientCrc = string((char*)packet);
 				clientCrc = clientCrc.substr(6); // Extract the CRC32 value (remove "CRC32|" prefix)
 				printf("Received file CRC32: %s\n", clientCrc.c_str());
 
-				// Calculate server-side CRC32 (accumulating data)
-				serverCrc = ComputeCRC(packet, bytes_read);
+				// Calculate CRC32 on the server-side from accumulated file data
+				serverCrc = crc32((const char*)fileData.data(), fileData.size()); // Correct CRC calculation
+			}
+			else
+			{
+				// Accumulate file data
+				fileData.insert(fileData.end(), packet, packet + bytes_read); // Store the received file data
 			}
 
 			// Final comparison between client and server CRC32
@@ -331,6 +333,7 @@ int main(int argc, char* argv[])
 				}
 			}
 		}
+
 
 		// show packets that were acked this frame
 
@@ -380,17 +383,18 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-unsigned long ComputeCRC(const unsigned char* data, size_t length)
-{
-	unsigned long crc = 0xFFFFFFFF;
-	for (size_t i = 0; i < length; i++) {
-		crc ^= data[i];
-		for (int j = 0; j < 8; j++) {
-			if (crc & 1)
-				crc = (crc >> 1) ^ 0xEDB88320;
-			else
-				crc >>= 1;
+uint32_t crc32(const char* s, size_t n) {
+	uint32_t crc = 0xFFFFFFFF;
+
+	for (size_t i = 0;i < n;i++) {
+		char ch = s[i];
+		for (size_t j = 0;j < 8;j++) {
+			uint32_t b = (ch ^ crc) & 1;
+			crc >>= 1;
+			if (b) crc = crc ^ 0xEDB88320;
+			ch >>= 1;
 		}
 	}
-	return crc ^ 0xFFFFFFFF;
+
+	return ~crc;
 }
