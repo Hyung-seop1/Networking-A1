@@ -309,6 +309,16 @@ int main(int argc, char* argv[])
 			connection.SendPacket((unsigned char*)crcPacket, strlen(crcPacket) + 1);
 
 			cout << "File transmission complete. CRC32 sent: " << std::hex << crc << endl;
+
+			// After the transfer is complete, calculate the time taken and the transfer speed
+			auto transferEndTime = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<float> transferDuration = transferEndTime - transferStartTime;
+			// Calculate the transfer speed in Mbps
+			float transferTimeInSeconds = transferDuration.count(); // Time in seconds
+			float transferSpeedMbps = (totalFileSize * 8.0f) / (transferTimeInSeconds * 1000000.0f); // Convert bytes to bits and calculate speed
+			// Display the transfer speed
+			cout << "Transfer completed in " << transferTimeInSeconds << " seconds.\n";
+			cout << "Transfer speed: " << transferSpeedMbps << " Mbps\n";
 		}
 
 
@@ -359,6 +369,16 @@ int main(int argc, char* argv[])
 					printf("File transfer failed! CRC32 mismatch.\n");
 				}
 			}
+
+			// After the transfer is complete, calculate the time taken and the transfer speed
+			auto transferEndTime = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<float> transferDuration = transferEndTime - transferStartTime;
+			// Calculate the transfer speed in Mbps
+			float transferTimeInSeconds = transferDuration.count(); // Time in seconds
+			float transferSpeedMbps = (totalFileSize * 8.0f) / (transferTimeInSeconds * 1000000.0f); // Convert bytes to bits and calculate speed
+			// Display the transfer speed
+			cout << "Transfer completed in " << transferTimeInSeconds << " seconds.\n";
+			cout << "Transfer speed: " << transferSpeedMbps << " Mbps\n";
 		}
 
 		// show packets that were acked this frame
